@@ -1,12 +1,18 @@
 import React, { Component } from 'react';
 
-export class FetchData extends Component {
-    static displayName = FetchData.name;
+export class GetQuotes extends Component {
+    static displayName = GetQuotes.name;
     static contents = "";
 
   constructor(props) {
     super(props);
-    this.state = { parcelquotes: [], content: '', weight: "0"};
+      this.state = {
+          parcelquotes: [],
+          content: '',
+          weight: "1",
+          locationFrom: "GBR",
+          locationTo: "GBR"
+      };
   }
 
     handleChange = (e) => {
@@ -34,7 +40,6 @@ export class FetchData extends Component {
     );
   }
 
-
   render() {
       const renderParcelQuotes = () => {
           this.populateParcelQuotesData()
@@ -50,7 +55,10 @@ export class FetchData extends Component {
     );
   }
 
-  async populateParcelQuotesData() {
+    async populateParcelQuotesData() {
+        if (!Number(this.state.weight)) {
+            return;
+        }
       fetch('/parcel', {
           method: 'POST',
           headers: {
@@ -59,8 +67,8 @@ export class FetchData extends Component {
           },
           body: JSON.stringify({
               parcelWeight: this.state.weight,
-              countryFrom: "GBR",
-              countryTo: "GBR"
+              countryFrom: this.state.locationFrom,
+              countryTo: this.state.locationTo
           })
       })
       .then(response => response.json())

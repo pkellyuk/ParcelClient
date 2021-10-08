@@ -43,7 +43,6 @@ namespace ParcelClient.Controllers
 
             // sort the results
             parcelResponse.Quotes = parcelResponse.Quotes.OrderBy(x => x.TotalPrice).ToList();
-
             return parcelResponse;
         }
     }

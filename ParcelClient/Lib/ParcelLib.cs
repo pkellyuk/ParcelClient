@@ -1,10 +1,9 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
 using Newtonsoft.Json;
 using ParcelClient.Models;
 using RestSharp;
+using Polly;
 
 namespace ParcelClient.Lib
 {
@@ -15,6 +14,13 @@ namespace ParcelClient.Lib
         private string ApiSecret { get; set; }
         private string ApiScope { get; set; }
         private TokenResponse ApiToken { get; set; }
+        private Policy restRetryPolicy = Policy.Handle<Exception>().WaitAndRetry(
+               retryCount: 5,
+               onRetry: (exception, attempt) =>
+               {
+                   // should log here
+               },
+               sleepDurationProvider: attempt => TimeSpan.FromMilliseconds(2000));
 
         public ParcelLib(string apiEndpoint, string apiClientId, string apiSecret, string apiScope)
         {
@@ -26,75 +32,81 @@ namespace ParcelClient.Lib
 
         public bool GetToken()
         {
-            RestRequest request = new RestRequest();
-            request.Method = Method.POST;
-            var restclient = new RestClient(ApiEndpoint + "/auth/connect/token");
-            request.AddHeader("Accept", "*/*");
-            request.AddHeader("Content-Type", "application/x-www-form-urlencoded");
-            request.AddParameter("client_id", ApiClientId);
-            request.AddParameter("client_secret", ApiSecret);
-            request.AddParameter("grant_type", "client_credentials");
-            request.AddParameter("scope", ApiScope);
-            var tResponse = restclient.Execute(request);
-            if(tResponse == null)
+            return restRetryPolicy.Execute(() =>
             {
-                return false;
-            }
+                RestRequest request = new RestRequest();
+                request.Method = Method.POST;
+                var restclient = new RestClient(ApiEndpoint + "/auth/connect/token");
+                request.AddHeader("Accept", "*/*");
+                request.AddHeader("Content-Type", "application/x-www-form-urlencoded");
+                request.AddParameter("client_id", ApiClientId);
+                request.AddParameter("client_secret", ApiSecret);
+                request.AddParameter("grant_type", "client_credentials");
+                request.AddParameter("scope", ApiScope);
+                var tResponse = restclient.Execute(request);
+                if (tResponse == null)
+                {
+                    return false;
+                }
 
-            string responseJson = tResponse.Content;
-            
-            if(string.IsNullOrEmpty(responseJson))
-            {
-                return false;
-            }
+                string responseJson = tResponse.Content;
 
-            ApiToken = JsonConvert.DeserializeObject<TokenResponse>(responseJson);
+                if (string.IsNullOrEmpty(responseJson))
+                {
+                    return false;
+                }
 
-            if(ApiToken == null)
-            {               
-                return false;
-            }
+                ApiToken = JsonConvert.DeserializeObject<TokenResponse>(responseJson);
 
-            if(string.IsNullOrEmpty(ApiToken.AccessToken))
-            {
-                return false;
-            }
+                if (ApiToken == null)
+                {
+                    return false;
+                }
 
-            return true;
+                if (string.IsNullOrEmpty(ApiToken.AccessToken))
+                {
+                    return false;
+                }
+
+                return true;
+            });
         }
 
         public ParcelResponseModel GetQuote(double parcelWeight, string countryFrom, string countryTo)
         {
-            // Create the request to get the parcel quote
-            ParcelRequestModel parcelRequest = new ParcelRequestModel();
-            parcelRequest.CollectionAddress = new CollectionAddress();
-            parcelRequest.DeliveryAddress = new DeliveryAddress();
-            parcelRequest.Parcels = new List<Parcel>();
-
-            Parcel parcel = new Parcel();
-            parcel.Weight = parcelWeight;
-            parcelRequest.Parcels.Add(parcel);
-    
-            parcelRequest.CollectionAddress.Country = countryFrom;
-            parcelRequest.DeliveryAddress.Country = countryTo;
-
-            RestRequest request = new RestRequest();
-            request.Method = Method.POST;
-            var restclient = new RestClient(ApiEndpoint + "/api/quotes");
-            request.AddHeader("Accept", "*/*");
-            request.AddHeader("Content-Type", "application/json");
-            request.AddHeader("Authorization", "Bearer " + ApiToken.AccessToken);
-            request.AddJsonBody(parcelRequest);
-            var tResponse = restclient.Execute(request);
-            string responseJson = tResponse.Content;
-
-            if(string.IsNullOrEmpty(responseJson))
+            return restRetryPolicy.Execute(() =>
             {
-                return null;
-            }
+                // Create the request to get the parcel quote
+                ParcelRequestModel parcelRequest = new ParcelRequestModel();
+                parcelRequest.CollectionAddress = new CollectionAddress();
+                parcelRequest.DeliveryAddress = new DeliveryAddress();
+                parcelRequest.Parcels = new List<Parcel>();
 
-            ParcelResponseModel parcelResponseList = JsonConvert.DeserializeObject<ParcelResponseModel>(responseJson);
-            return parcelResponseList;
+                Parcel parcel = new Parcel();
+                parcel.Weight = parcelWeight;
+                parcelRequest.Parcels.Add(parcel);
+
+                parcelRequest.CollectionAddress.Country = countryFrom;
+                parcelRequest.DeliveryAddress.Country = countryTo;
+
+                RestRequest request = new RestRequest();
+                request.Method = Method.POST;
+                var restclient = new RestClient(ApiEndpoint + "/api/quotes");
+                request.AddHeader("Accept", "*/*");
+                request.AddHeader("Content-Type", "application/json");
+                request.AddHeader("Authorization", "Bearer " + ApiToken.AccessToken);
+                request.AddJsonBody(parcelRequest);
+                var tResponse = restclient.Execute(request);
+                string responseJson = tResponse.Content;
+
+                if (string.IsNullOrEmpty(responseJson))
+                {
+                    return null;
+                }
+
+                ParcelResponseModel parcelResponseList = JsonConvert.DeserializeObject<ParcelResponseModel>(responseJson);
+                return parcelResponseList;
+            });
         }
     }
 }
